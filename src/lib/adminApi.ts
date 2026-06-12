@@ -1,3 +1,5 @@
+import { supabase } from "@/integrations/supabase/client";
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 export type AdminUser = {
@@ -9,33 +11,10 @@ export type AdminUser = {
   is_admin: boolean;
 };
 
-export function getAdminToken() {
-  return localStorage.getItem("organic_admin_token");
-}
-
-export function setAdminSession(token: string, user: AdminUser) {
-  localStorage.setItem("organic_admin_token", token);
-  localStorage.setItem("organic_admin_user", JSON.stringify(user));
-}
-
-export function getStoredAdminUser(): AdminUser | null {
-  const raw = localStorage.getItem("organic_admin_user");
-  if (!raw) return null;
-
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-
-export function clearAdminSession() {
-  localStorage.removeItem("organic_admin_token");
-  localStorage.removeItem("organic_admin_user");
-}
-
 export async function adminApi<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = getAdminToken();
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
     headers: {

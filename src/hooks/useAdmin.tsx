@@ -1,47 +1,55 @@
 import { useEffect, useState } from "react";
-import {
-  adminApi,
-  clearAdminSession,
-  getAdminToken,
-  getStoredAdminUser,
-  type AdminUser,
-} from "@/lib/adminApi";
+import { supabase } from "@/integrations/supabase/client";
+import type { AdminUser } from "@/lib/adminApi";
 
 export function useAdmin() {
-  const [user, setUser] = useState<AdminUser | null>(getStoredAdminUser());
+  const [user, setUser] = useState<AdminUser | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const verifySession = async () => {
-      const token = getAdminToken();
-      if (!token) {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session?.user) {
         setUser(null);
         setIsAdmin(false);
         setLoading(false);
         return;
       }
 
-      try {
-        const data = await adminApi<{ user: AdminUser }>("/api/admin/me");
-        setUser(data.user);
-        setIsAdmin(data.user.is_admin);
-      } catch {
-        clearAdminSession();
+      const { data: admin, error } = await supabase.rpc("is_admin");
+      if (error || !admin) {
         setUser(null);
         setIsAdmin(false);
-      } finally {
         setLoading(false);
+        return;
       }
+
+      const { user: authUser } = session;
+      setUser({
+        id: authUser.id,
+        email: authUser.email || "",
+        phone: authUser.phone || null,
+        full_name: authUser.user_metadata?.full_name || null,
+        roles: ["admin"],
+        is_admin: true,
+      });
+      setIsAdmin(true);
+      setLoading(false);
     };
 
     verifySession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
+      void verifySession();
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  const signOut = () => {
-    clearAdminSession();
-    setUser(null);
-    setIsAdmin(false);
+  const signOut = async () => {
+    await supabase.auth.signOut();
   };
 
   return { user, isAdmin, loading, signOut };

@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node index.js",
     "seed:admin": "node scripts/create-admin.js",
+    "seed:demo": "node scripts/seed-demo.js",
     "test": "echo \"No tests configured\""
   },
   "keywords": [],

@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { adminApi, setAdminSession, type AdminUser } from "@/lib/adminApi";
+import { supabase } from "@/integrations/supabase/client";
 import { Leaf, Lock, Mail } from "lucide-react";
 
 export default function AdminLogin() {
@@ -20,12 +20,18 @@ export default function AdminLogin() {
     setLoading(true);
 
     try {
-      const data = await adminApi<{ token: string; user: AdminUser }>("/api/auth/login", {
-        method: "POST",
-        body: JSON.stringify({ email, password }),
+      const { error: loginError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
       });
+      if (loginError) throw loginError;
 
-      setAdminSession(data.token, data.user);
+      const { data: isAdmin, error: roleError } = await supabase.rpc("is_admin");
+      if (roleError || !isAdmin) {
+        await supabase.auth.signOut();
+        throw new Error("This Supabase account does not have admin access.");
+      }
+
       toast({ title: "Login successful", description: "Welcome to the admin panel." });
       navigate("/admin", { replace: true });
     } catch (error) {

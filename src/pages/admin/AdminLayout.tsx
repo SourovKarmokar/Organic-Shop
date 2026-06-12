@@ -164,7 +164,7 @@ const menuItems: MenuItem[] = [
 ];
 
 export default function AdminLayout() {
-  const { user, loading, signOut } = useAdmin();
+  const { user, isAdmin, loading, signOut } = useAdmin();
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -174,8 +174,8 @@ export default function AdminLayout() {
   });
 
   useEffect(() => {
-    if (!loading && !user) navigate("/admin/login", { replace: true });
-  }, [loading, navigate, user]);
+    if (!loading && (!user || !isAdmin)) navigate("/admin/login", { replace: true });
+  }, [isAdmin, loading, navigate, user]);
 
   useEffect(() => {
     const activeParent = menuItems.find((item) =>
@@ -188,7 +188,7 @@ export default function AdminLayout() {
     return <div className="flex min-h-screen items-center justify-center bg-[#f6f7f5]">Loading admin panel...</div>;
   }
 
-  if (!user) return null;
+  if (!user || !isAdmin) return null;
 
   const isChildActive = (path: string) => {
     const [pathname, query = ""] = path.split("?");
@@ -198,8 +198,8 @@ export default function AdminLayout() {
     return childStatus ? childStatus === currentStatus : !currentStatus;
   };
 
-  const handleSignOut = () => {
-    signOut();
+  const handleSignOut = async () => {
+    await signOut();
     navigate("/admin/login", { replace: true });
   };
 

@@ -16,6 +16,8 @@ app.use(cors({ origin: allowedOrigins }));
 app.use(express.json({ limit: "10mb" }));
 
 const tokens = new Map();
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 
 const resources = {
   users: {
@@ -193,24 +195,61 @@ async function getRoles(userId) {
   return roles.map((row) => row.role);
 }
 
+async function getSupabaseAdmin(token) {
+  if (!supabaseUrl || !supabaseAnonKey) return null;
+
+  const headers = {
+    apikey: supabaseAnonKey,
+    Authorization: `Bearer ${token}`,
+  };
+
+  const userResponse = await fetch(`${supabaseUrl}/auth/v1/user`, { headers });
+  if (!userResponse.ok) return null;
+  const user = await userResponse.json();
+
+  const roleResponse = await fetch(`${supabaseUrl}/rest/v1/rpc/is_admin`, {
+    method: "POST",
+    headers: { ...headers, "Content-Type": "application/json" },
+    body: "{}",
+  });
+  if (!roleResponse.ok || !(await roleResponse.json())) return null;
+
+  return user;
+}
+
 async function requireAdmin(req, res, next) {
   const token = req.headers.authorization?.replace(/^Bearer\s+/i, "");
   const userId = token ? tokens.get(token) : null;
 
-  if (!userId) {
-    res.status(401).json({ error: "Unauthorized" });
+  if (userId) {
+    const roles = await getRoles(userId);
+    if (!roles.includes("admin") && !roles.includes("super_admin")) {
+      res.status(403).json({ error: "Admin access required" });
+      return;
+    }
+
+    req.userId = userId;
+    req.roles = roles;
+    next();
     return;
   }
 
-  const roles = await getRoles(userId);
-  if (!roles.includes("admin") && !roles.includes("super_admin")) {
-    res.status(403).json({ error: "Admin access required" });
+  try {
+    const supabaseUser = token ? await getSupabaseAdmin(token) : null;
+    if (!supabaseUser) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    req.userId = supabaseUser.id;
+    req.roles = ["admin"];
+    req.supabaseUser = supabaseUser;
+    next();
+  } catch (error) {
+    console.error("Supabase admin verification failed:", error.message);
+    res.status(503).json({ error: "Could not verify admin session" });
     return;
   }
-
-  req.userId = userId;
-  req.roles = roles;
-  next();
 }
 
 app.get("/api/test-db", async (_req, res) => {
@@ -246,6 +285,21 @@ app.post("/api/auth/login", async (req, res) => {
 });
 
 app.get("/api/admin/me", requireAdmin, async (req, res) => {
+  if (req.supabaseUser) {
+    const user = req.supabaseUser;
+    res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        phone: user.phone,
+        full_name: user.user_metadata?.full_name || null,
+        roles: req.roles,
+        is_admin: true,
+      },
+    });
+    return;
+  }
+
   const [rows] = await pool.query("SELECT * FROM users WHERE id = ? LIMIT 1", [req.userId]);
   res.json({ user: publicUser(rows[0], req.roles) });
 });
