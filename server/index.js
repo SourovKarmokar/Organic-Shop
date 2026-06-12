@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const crypto = require("crypto");
+const path = require("path");
 const { pool, id } = require("./db");
 const { verifyPassword } = require("./password");
 require("dotenv").config();
@@ -170,14 +171,9 @@ async function getIntegration(type) {
   return row;
 }
 
-app.get("/", (_req, res) => {
-  res.json({
-    message: "Organic Shop MySQL API is running",
-    database_test: "http://localhost:5000/api/test-db",
-    products: "http://localhost:5000/api/products",
-    categories: "http://localhost:5000/api/categories",
-  });
-});
+// Serve built frontend static files
+const distPath = path.join(__dirname, "../dist");
+app.use(express.static(distPath));
 
 function publicUser(user, roles = []) {
   return {
@@ -998,6 +994,11 @@ app.post("/api/admin/products", requireAdmin, async (req, res) => {
   );
 
   res.status(201).json({ id: productId });
+});
+
+// SPA catch-all: serve index.html for any non-API route
+app.get("*", (_req, res) => {
+  res.sendFile(path.join(__dirname, "../dist/index.html"));
 });
 
 app.listen(Number(process.env.PORT || 5000), () => {
